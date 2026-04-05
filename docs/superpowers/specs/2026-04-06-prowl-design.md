@@ -109,6 +109,8 @@ The application has three threads of execution:
 
 **State machine:** The `App` struct holds all state — current mode/tab, query, selected index, scroll positions, active filters, preview cache, input mode (insert/normal). Input events mutate `App` state directly on the main thread. Background results arrive as `AppEvent` variants and are merged into state on the next loop iteration.
 
+**Candidate cache:** Each tab maintains a `Vec<PathEntry>` as the source-of-truth candidate list alongside its nucleo instance. Nucleo's `Injector` is append-only — candidates cannot be removed once injected. When a re-traversal is triggered (depth change, root toggle, hidden files toggle), the candidate cache is rebuilt from the new traversal, the nucleo instance is destroyed and recreated, and all candidates are re-injected from the cache. This decouples candidate storage from nucleo's internals, avoids stale entries in the scorer, and makes future features (content search tab, dynamic filtering) feasible without architectural changes.
+
 ---
 
 ## Input Model & Keybindings
@@ -166,7 +168,7 @@ All action keybindings are configured in TOML with separate sections per input m
 c     = { cmd = "__prowl_cd", mode = "builtin" }
 y     = { cmd = "__prowl_yank_abs", mode = "builtin" }
 enter = { cmd = "code {}", mode = "detach" }
-e     = { cmd = "nvim {}", mode = "suspend" }
+e     = { cmd = "nvim {*}", mode = "suspend" }
 t     = { cmd = "wezterm cli new-tab -- zsh -c 'cd {}; exec zsh'", mode = "detach" }
 m     = { cmd = "glow {}", mode = "suspend" }
 v     = { cmd = "csvlens {}", mode = "suspend" }
@@ -176,16 +178,22 @@ o     = { cmd = "xdg-open {}", mode = "detach" }
 # Insert mode — only modifier/special keys (single letters type)
 [actions.insert]
 enter  = { cmd = "code {}", mode = "detach" }
-ctrl_e = { cmd = "nvim {}", mode = "suspend" }
+ctrl_e = { cmd = "nvim {*}", mode = "suspend" }
 ctrl_o = { cmd = "__prowl_cd", mode = "builtin" }
 
-# Mode-specific overrides
-[actions.normal.files]
-enter = { cmd = "nvim {}", mode = "suspend" }
+# Tab-specific overrides use flat "mode-tab" keys to avoid deep TOML nesting.
+# This scales cleanly as new tabs are added (e.g. normal-search, insert-search).
+[actions.normal-files]
+enter = { cmd = "nvim {*}", mode = "suspend" }
 
-[actions.insert.files]
-enter = { cmd = "nvim {}", mode = "suspend" }
+[actions.insert-files]
+enter = { cmd = "nvim {*}", mode = "suspend" }
 ```
+
+**Action resolution order:** When a key is pressed, Prowl resolves the action by checking (most specific first):
+1. `[actions.<input_mode>-<tab_mode>]` (e.g. `actions.normal-files`)
+2. `[actions.<input_mode>]` (e.g. `actions.normal`)
+3. No match → key is ignored (normal mode) or typed into query (insert mode)
 
 ---
 
@@ -293,7 +301,10 @@ ParsedQuery {
 - `!word` tokens → extracted as negation filters (exclude results containing substring)
 - `^path` token → extracted as path prefix filter (only one allowed)
 - `'word` tokens → extracted as exact substring matches
+- `\#`, `\!`, `\^`, `\'` → escaped literal characters (treated as fuzzy input, not special tokens)
 - Everything remaining → joined as the fuzzy query string passed to nucleo
+
+**Escaping:** Prefix a special character with `\` to search for it literally. `\#my-project` fuzzy-matches paths containing `#my-project` instead of filtering by a tag called `my-project`.
 
 ### Search pipeline
 
@@ -333,6 +344,13 @@ The final score for each result blends two signals:
 
 **Frecency** accounts for the remaining 30%. Frecency combines visit frequency and recency using the same algorithm as `zoxide`: each visit increments a score, and scores decay exponentially over time.
 
+**Score normalization:** Nucleo scores are arbitrary positive integers and frecency scores are floats on a different scale. Before blending, both are normalized to `[0.0, 1.0]`:
+- Nucleo: `normalized = score / max_score_in_snapshot` (the top-ranked result always gets 1.0)
+- Frecency: `normalized = score / max_frecency_score_across_candidates` (the most-visited path always gets 1.0)
+- Final: `(1.0 - frecency_weight) * normalized_nucleo + frecency_weight * normalized_frecency`
+
+When the query is empty (no fuzzy matching active), nucleo scores are all equal, so the ranking is purely by frecency. When frecency data is empty (fresh install), the frecency component is zero and ranking is purely by fuzzy match quality.
+
 The blend is configurable: `frecency_weight = 0.0` for pure fuzzy matching, `frecency_weight = 1.0` for pure frecency. The default of `0.3` keeps search results predictable while surfacing recently used items.
 
 ---
@@ -342,6 +360,8 @@ The blend is configurable: `frecency_weight = 0.0` for pure fuzzy matching, `fre
 ### Async rendering pipeline
 
 When the selection changes, the main thread sends a `PreviewRequest` to the tokio runtime. If a previous request is still in-flight for a different path, it's cancelled via `tokio::CancellationToken`. The preview pane shows a loading indicator until the result arrives.
+
+**PreviewContext:** Each `PreviewRequest` includes a `PreviewContext` containing the selected item, the active sub-tab, and metadata about how the item was found (source tab, query match positions). The dispatcher routes on `(item_type, source_context)` rather than just `item_type`. For v0.1, the source context is always `Browsing` and the behavior is identical to simple file-type dispatch. This interface is designed to support future features like content search (where the preview would highlight matching lines based on the search query) without requiring architectural changes to the preview system.
 
 ### Preview sub-tabs
 
@@ -398,9 +418,14 @@ Runs once at startup, stored in app state:
 | `suspend` | Leave alternate screen, disable raw mode, run child, wait for exit, re-enter TUI | Neovim, glow, csvlens, lazygit |
 | `builtin` | Internal Prowl action, no subprocess | cd, yank, bookmark toggle |
 
-### `{}` substitution
+### Path substitution
 
-Before dispatch, `{}` in the command string is replaced with the shell-escaped absolute path of the selected item. For multi-select, the action is applied to each selected item sequentially (suspend mode) or in parallel (detach mode).
+Two placeholders are available in command strings:
+
+- `{}` — replaced with the shell-escaped absolute path of the single selected item (or the first selected item if multiple are marked)
+- `{*}` — replaced with all selected paths as space-separated, shell-escaped arguments
+
+For multi-select: if the command uses `{*}`, all paths are passed in a single invocation (`nvim file1 file2 file3`). If the command uses `{}`, the action is applied to each selected item individually — sequentially for suspend mode, in parallel for detach mode. Actions should prefer `{*}` for tools that accept multiple arguments (editors, file managers) and `{}` for tools that operate on a single path (cd, clipboard).
 
 ### Suspend/resume sequence
 
@@ -544,6 +569,8 @@ markers = ["hugo.toml"]
 
 Custom tags are processed after built-in tags, filterable via `#tagname`, shown as colored chips same as built-ins.
 
+**Performance note on content-based markers:** Markers that include content matching (e.g. `"config.toml:baseURL"`) are significantly more expensive than filename-only markers because they require reading file contents. Content-based markers are evaluated lazily — only when a directory already matches at least one filename-only marker in the same custom tag definition, or when the directory is selected in the results list. They are never evaluated during traversal. This keeps traversal performance unaffected by custom tag complexity.
+
 ### Inline project stats
 
 For each directory result, lazily calculate:
@@ -654,11 +681,12 @@ csvlens_bin = "csvlens"
 bat_bin     = "bat"
 
 # ── Actions ───────────────────────────────────────────────────────────────────
+# {} = single selected path, {*} = all selected paths (multi-select)
 [actions.normal]
 c     = { cmd = "__prowl_cd", mode = "builtin" }
 y     = { cmd = "__prowl_yank_abs", mode = "builtin" }
 enter = { cmd = "code {}", mode = "detach" }
-e     = { cmd = "nvim {}", mode = "suspend" }
+e     = { cmd = "nvim {*}", mode = "suspend" }
 t     = { cmd = "wezterm cli new-tab -- zsh -c 'cd {}; exec zsh'", mode = "detach" }
 m     = { cmd = "glow {}", mode = "suspend" }
 v     = { cmd = "csvlens {}", mode = "suspend" }
@@ -667,14 +695,15 @@ o     = { cmd = "xdg-open {}", mode = "detach" }
 
 [actions.insert]
 enter  = { cmd = "code {}", mode = "detach" }
-ctrl_e = { cmd = "nvim {}", mode = "suspend" }
+ctrl_e = { cmd = "nvim {*}", mode = "suspend" }
 ctrl_o = { cmd = "__prowl_cd", mode = "builtin" }
 
-[actions.normal.files]
-enter = { cmd = "nvim {}", mode = "suspend" }
+# Tab-specific overrides (flat "mode-tab" keys)
+[actions.normal-files]
+enter = { cmd = "nvim {*}", mode = "suspend" }
 
-[actions.insert.files]
-enter = { cmd = "nvim {}", mode = "suspend" }
+[actions.insert-files]
+enter = { cmd = "nvim {*}", mode = "suspend" }
 
 # ── Custom tags ───────────────────────────────────────────────────────────────
 # [[custom_tags]]
