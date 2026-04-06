@@ -1,4 +1,4 @@
-use prowl::search::query::{ParsedQuery, parse_query};
+use prowl::search::query::parse_query;
 
 #[test]
 fn test_plain_fuzzy_query() {

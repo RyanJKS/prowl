@@ -466,7 +466,7 @@ impl App {
         };
 
         let cmd_template = action_def.cmd.clone();
-        let mode = ActionMode::from_str(&action_def.mode);
+        let mode = ActionMode::parse(&action_def.mode);
 
         let paths: Vec<String> = self
             .filtered_results

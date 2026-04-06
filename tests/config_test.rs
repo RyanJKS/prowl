@@ -21,7 +21,7 @@ fn test_config_from_toml_string() {
         default_depth = 3
         show_hidden = true
     "#;
-    let config = Config::from_str(toml_str).unwrap();
+    let config = Config::parse(toml_str).unwrap();
     assert_eq!(config.roots, vec!["~/projects"]);
     assert_eq!(config.default_depth, 3);
     assert!(config.show_hidden);
@@ -31,7 +31,7 @@ fn test_config_from_toml_string() {
 #[test]
 fn test_config_invalid_toml_returns_error() {
     let toml_str = "this is [[[not valid toml";
-    let result = Config::from_str(toml_str);
+    let result = Config::parse(toml_str);
     assert!(result.is_err());
 }
 
@@ -51,7 +51,7 @@ fn test_config_actions_parsing() {
         [actions.normal-files]
         enter = { cmd = "nvim {*}", mode = "suspend" }
     "#;
-    let config = Config::from_str(toml_str).unwrap();
+    let config = Config::parse(toml_str).unwrap();
     let normal = &config.actions.normal;
     assert_eq!(normal.get("enter").unwrap().cmd, "code {}");
     assert_eq!(normal.get("enter").unwrap().mode, "detach");

@@ -294,7 +294,7 @@ impl Default for Config {
 
 impl Config {
     /// Parse a `Config` from a TOML string. Missing fields fall back to defaults.
-    pub fn from_str(s: &str) -> Result<Self> {
+    pub fn parse(s: &str) -> Result<Self> {
         let config: Config = toml::from_str(s)?;
         Ok(config)
     }
@@ -305,7 +305,7 @@ impl Config {
         let path = config_path();
         if path.exists() {
             let contents = fs::read_to_string(path.as_std_path())?;
-            Self::from_str(&contents)
+            Self::parse(&contents)
         } else {
             Ok(Self::default())
         }

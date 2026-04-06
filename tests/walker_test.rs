@@ -1,4 +1,4 @@
-use prowl::search::walker::{walk_directories, WalkOptions, PathEntry};
+use prowl::search::walker::{walk_directories, WalkOptions};
 use tempfile::TempDir;
 use std::fs;
 

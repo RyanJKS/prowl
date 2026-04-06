@@ -8,7 +8,7 @@ pub enum ActionMode {
 }
 
 impl ActionMode {
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "suspend" => Self::Suspend,
             "builtin" => Self::Builtin,

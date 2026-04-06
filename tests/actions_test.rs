@@ -47,10 +47,10 @@ fn test_substitute_builtin_no_placeholder() {
 
 #[test]
 fn test_action_mode_from_string() {
-    assert_eq!(ActionMode::from_str("detach"), ActionMode::Detach);
-    assert_eq!(ActionMode::from_str("suspend"), ActionMode::Suspend);
-    assert_eq!(ActionMode::from_str("builtin"), ActionMode::Builtin);
-    assert_eq!(ActionMode::from_str("unknown"), ActionMode::Detach);
+    assert_eq!(ActionMode::parse("detach"), ActionMode::Detach);
+    assert_eq!(ActionMode::parse("suspend"), ActionMode::Suspend);
+    assert_eq!(ActionMode::parse("builtin"), ActionMode::Builtin);
+    assert_eq!(ActionMode::parse("unknown"), ActionMode::Detach);
 }
 
 #[test]
