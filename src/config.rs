@@ -139,7 +139,16 @@ fn default_bookmarks() -> Utf8PathBuf {
 }
 
 fn default_lastdir_file() -> Utf8PathBuf {
-    data_dir().join("lastdir")
+    cache_dir().join("lastdir")
+}
+
+fn cache_dir() -> Utf8PathBuf {
+    if let Ok(xdg) = std::env::var("XDG_CACHE_HOME") {
+        Utf8PathBuf::from(xdg).join("prowl")
+    } else {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "~".to_string());
+        Utf8PathBuf::from(home).join(".cache").join("prowl")
+    }
 }
 
 fn data_dir() -> Utf8PathBuf {
