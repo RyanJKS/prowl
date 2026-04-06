@@ -1,0 +1,26 @@
+{
+  "enabledPlugins": {
+    "claude-mem@thedotmack": true
+  },
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(git commit *)",
+      "Bash(git * main)",
+      "Bash(* --version)",
+      "Bash(* --help *)",
+      "Glob",
+      "Grep",
+      "LS",
+      "Read"
+    ],
+    "deny": [
+      "Bash(git push *)",
+      "Bash(npm install *)",
+
+      "Bash(rm *)",
+      "Bash(rm -rf *)",
+      "Bash(rmdir *)"
+    ]
+  }
+}
