@@ -1,0 +1,59 @@
+# Prowl configuration file
+# Located at: ~/.config/prowl/config.toml
+#
+# All values shown are the defaults. Uncomment and modify as needed.
+
+# ─── Roots ────────────────────────────────────────────────────────────────────
+# Directories prowl walks on startup.
+# If empty, prowl defaults to the directory passed on the CLI (or cwd).
+# roots = ["~/projects", "~/work"]
+
+# ─── Walk settings ────────────────────────────────────────────────────────────
+# Maximum directory depth to recurse (1 = immediate children only).
+# default_depth = 5
+
+# Include hidden directories (names starting with '.').
+# show_hidden = false
+
+# Honour .gitignore / .ignore files when walking.
+# respect_gitignore = true
+
+# Follow symbolic links.
+# follow_symlinks = false
+
+# ─── Display ──────────────────────────────────────────────────────────────────
+# Maximum number of results shown in the list.
+# max_results = 200
+
+# Show the keybind bar at the bottom.
+# show_keybind_bar = true
+
+# Terminal width below which the preview pane is hidden.
+# preview_collapse_width = 100
+
+# ─── Actions ──────────────────────────────────────────────────────────────────
+# Keys can be single characters ("e"), "enter", or ctrl-combos ("ctrl_e").
+# mode options: "detach" (spawn bg process), "suspend" (pause TUI), "builtin"
+#
+# Builtin commands:
+#   __prowl_cd    — set lastdir so the shell wrapper can `cd` to it
+#   __prowl_yank  — copy the path to the clipboard
+
+[actions.normal]
+enter = { cmd = "code {}", mode = "detach" }
+e     = { cmd = "nvim {*}", mode = "suspend" }
+c     = { cmd = "__prowl_cd", mode = "builtin" }
+y     = { cmd = "__prowl_yank", mode = "builtin" }
+o     = { cmd = "xdg-open {}", mode = "detach" }
+
+[actions.insert]
+enter    = { cmd = "code {}", mode = "detach" }
+ctrl_e   = { cmd = "nvim {*}", mode = "suspend" }
+ctrl_o   = { cmd = "__prowl_cd", mode = "builtin" }
+
+# ─── Paths ────────────────────────────────────────────────────────────────────
+# Override the default XDG-based paths if needed.
+# [paths]
+# frecency_db  = "~/.local/share/prowl/frecency.db"
+# bookmarks    = "~/.local/share/prowl/bookmarks.toml"
+# lastdir_file = "~/.local/share/prowl/lastdir"
